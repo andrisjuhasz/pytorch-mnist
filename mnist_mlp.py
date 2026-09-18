@@ -64,22 +64,24 @@ optimizer = torch.optim.SGD(
 def train_one_epoch():
     model.train()
 
-    total_loss = 0
+    total_loss = 0.0
+    total_samples = 0
 
     for x, y in train_loader:
         x = x.to(device)
         y = y.to(device)
 
         logits = model(x)
-        loss = loss_fn(logits, y)
+        loss = loss_fn(logits, y) #average loss for the batch (reduction = "mean" by default)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
+        total_loss += loss.item() * x.size(0)
+        total_samples += x.size(0)
 
-    return total_loss / len(train_loader)
+    return total_loss / total_samples
 
 
 def evaluate():
