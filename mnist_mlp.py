@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+train_val_ratio = 0.9
 
 batch_size = 64
 learning_rate = 0.01
@@ -17,12 +19,23 @@ transform = transforms.Compose([
 ])
 
 
-train_data = datasets.MNIST(
+full_train_data = datasets.MNIST(
     root="data",
     train=True,
     download=True,
     transform=transform
 )
+
+train_size = int(train_val_ratio * len(full_train_data))
+val_size = len(full_train_data) - train_size
+
+random_gen = torch.Generator().manual_seed(42)
+
+train_data, validation_data = random_split(
+        full_train_data,
+        [train_size,val_size],
+        generator=random_gen
+        )
 
 test_data = datasets.MNIST(
     root="data",
@@ -31,10 +44,17 @@ test_data = datasets.MNIST(
     transform=transform
 )
 
+
 train_loader = DataLoader(
     train_data,
     batch_size=batch_size,
     shuffle=True
+)
+
+validation_loader = DataLoader(
+    validation_data,
+    batch_size=batch_size,
+    shuffle=False
 )
 
 test_loader = DataLoader(
@@ -51,8 +71,8 @@ model = nn.Sequential(
     nn.Linear(128, 10)
 ).to(device)
 
-
 loss_fn = nn.CrossEntropyLoss()
+
 
 optimizer = torch.optim.SGD(
     model.parameters(),
