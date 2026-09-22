@@ -81,55 +81,62 @@ optimizer = torch.optim.SGD(
 )
 
 
-def train_one_epoch():
+def train_one_epoch(loader):
     model.train()
 
     total_loss = 0.0
     total_samples = 0
 
-    for x, y in train_loader:
+    for x, y in loader:
         x = x.to(device)
         y = y.to(device)
 
         logits = model(x)
-        loss = loss_fn(logits, y) #average loss for the batch (reduction = "mean" by default)
+        avg_loss = loss_fn(logits, y) #average loss for the batch (reduction = "mean" by default)
 
         optimizer.zero_grad()
-        loss.backward()
+        avg_loss.backward()
         optimizer.step()
 
-        total_loss += loss.item() * x.size(0)
+        total_loss += avg_loss.item() * x.size(0)
         total_samples += x.size(0)
 
     return total_loss / total_samples
 
 
-def evaluate():
+def evaluate(loader):
     model.eval()
 
-    correct = 0
-    total = 0
+    total_loss = 0.0
+    total_correct = 0
+    total_samples = 0
 
     with torch.no_grad():
-        for x, y in test_loader:
+        for x, y in loader:
             x = x.to(device)
             y = y.to(device)
 
             logits = model(x)
+            avg_loss = loss_fn(logits, y)
+
+            total_loss += avg_loss.item() * x.size(0)
+
             predictions = logits.argmax(dim=1)
 
-            correct += (predictions == y).sum().item()
-            total += y.size(0)
+            total_correct += (predictions == y).sum().item()
+            total_samples += y.size(0)
 
-    return correct / total
+    return total_loss/total_samples, total_correct/total_samples
 
 
 for epoch in range(epochs):
-    train_loss = train_one_epoch()
-    test_accuracy = evaluate()
+    train_loss = train_one_epoch(train_loader)
+
+    validation_loss, validation_accuracy = evaluate(validation_loader)
 
     print(
         f"Epoch {epoch + 1:02d} | "
-        f"loss: {train_loss:.4f} | "
-        f"test accuracy: {test_accuracy * 100:.2f}%"
+        f"train loss: {train_loss:.4f} | "
+        f"validation loss: {validation_loss:.4f} | "
+        f"validation accuracy: {validation_accuracy * 100:.2f}%"
     )
