@@ -3,15 +3,14 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
+import matplotlib.pyplot as plt
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-train_val_ratio = 0.9
+train_validation_ratio = 0.9
 
 batch_size = 64
-learning_rate = 0.01
-momentum = 0.9
-epochs = 10
+n_epochs = 20
 
 
 transform = transforms.Compose([
@@ -26,14 +25,14 @@ full_train_data = datasets.MNIST(
     transform=transform
 )
 
-train_size = int(train_val_ratio * len(full_train_data))
-val_size = len(full_train_data) - train_size
+train_size = int(train_validation_ratio * len(full_train_data))
+validation_size = len(full_train_data) - train_size
 
 random_gen = torch.Generator().manual_seed(42)
 
 train_data, validation_data = random_split(
         full_train_data,
-        [train_size,val_size],
+        [train_size,validation_size],
         generator=random_gen
         )
 
@@ -64,24 +63,9 @@ test_loader = DataLoader(
 )
 
 
-model = nn.Sequential(
-    nn.Flatten(),
-    nn.Linear(28 * 28, 128),
-    nn.ReLU(),
-    nn.Linear(128, 10)
-).to(device)
-
 loss_fn = nn.CrossEntropyLoss()
 
-
-optimizer = torch.optim.SGD(
-    model.parameters(),
-    momentum=momentum,
-    lr=learning_rate
-)
-
-
-def train_one_epoch(loader):
+def train_one_epoch(model, optimizer, loader):
     model.train()
 
     total_loss = 0.0
@@ -103,8 +87,7 @@ def train_one_epoch(loader):
 
     return total_loss / total_samples
 
-
-def evaluate(loader):
+def evaluate(model, loader):
     model.eval()
 
     total_loss = 0.0
@@ -128,15 +111,100 @@ def evaluate(loader):
 
     return total_loss/total_samples, total_correct/total_samples
 
+def training_validation_run(learning_rate, momentum):
+    model = nn.Sequential(
+        nn.Flatten(),
+        nn.Linear(28 * 28, 128),
+        nn.ReLU(),
+        nn.Linear(128, 10)
+    ).to(device)
 
-for epoch in range(epochs):
-    train_loss = train_one_epoch(train_loader)
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        momentum=momentum,
+        lr=learning_rate
+    )
 
-    validation_loss, validation_accuracy = evaluate(validation_loader)
+    train_losses = []
+    validation_losses = []
+    validation_accuracies = []
+
+    for epoch in range(n_epochs):
+        train_loss = train_one_epoch(model, optimizer, train_loader)
+        validation_loss, validation_accuracy = evaluate(model, validation_loader)
+
+        train_losses.append(train_loss)
+        validation_losses.append(validation_loss)
+        validation_accuracies.append(validation_accuracy)
+
+    history = {
+            "train_losses": train_losses,
+            "validation_losses": validation_losses,
+            "validation_accuracies": validation_accuracies
+            }
+
+    return model, history
+
+def print_history(history):
+    for epoch in range(n_epochs):
+        print(
+            f"Epoch {epoch + 1:02d} | ", end=" ")
+        for metric in history:
+            print(f"{metric}: {history[metric][epoch]:.4f} |", end=" ")
+        print()
+
+def plot_metric_histories(histories, metric):
+    plt.figure()
+
+    for (learning_rate, momentum), history in histories.items():
+        values = history[metric]
+        epochs = range(1, len(values) + 1)
+
+        plt.plot(
+            epochs,
+            values,
+            label=f"lr={learning_rate}, m={momentum}"
+        )
+
+    plt.xlabel("Epoch")
+    plt.ylabel(metric)
+    plt.legend()
+
+def main():
+    lr_mom_experiments = [
+        (0.4, 0.0),
+        (0.15, 0.5),
+        (0.03, 0.9),
+    ]
+
+    histories = {}
+    models = {}
+
+    for learning_rate, momentum in lr_mom_experiments:
+        models[(learning_rate, momentum)], histories[(learning_rate, momentum)] = \
+        training_validation_run(
+            learning_rate,
+            momentum
+        )
+
+    for learning_rate, momentum in lr_mom_experiments:
+        print_history(histories[(learning_rate, momentum)])
+
+    metrics = next(iter(histories.values())).keys()
+    for metric in metrics:
+        plot_metric_histories(histories, metric)
+    plt.show()
+
+
+    final_learning_rate, final_momentum = lr_mom_experiments[0]
+    final_model = models[(final_learning_rate, final_momentum)]
+    test_loss, test_accuracy = evaluate(final_model, test_loader)
 
     print(
-        f"Epoch {epoch + 1:02d} | "
-        f"train loss: {train_loss:.4f} | "
-        f"validation loss: {validation_loss:.4f} | "
-        f"validation accuracy: {validation_accuracy * 100:.2f}%"
+        f"Test loss: {test_loss:.4f} | "
+        f"Test accuracy: {test_accuracy * 100:.2f}%"
     )
+
+if __name__ == "__main__":
+    main()
+
