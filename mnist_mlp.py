@@ -1,22 +1,19 @@
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
-import matplotlib.pyplot as plt
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 train_validation_ratio = 0.9
-
 batch_size = 64
 n_epochs = 20
-
 
 transform = transforms.Compose([
     transforms.ToTensor()
 ])
-
 
 full_train_data = datasets.MNIST(
     root="data",
@@ -31,41 +28,41 @@ validation_size = len(full_train_data) - train_size
 random_gen = torch.Generator().manual_seed(42)
 
 train_data, validation_data = random_split(
-        full_train_data,
-        [train_size,validation_size],
-        generator=random_gen
-        )
+    full_train_data,
+    [train_size, validation_size],
+    generator=random_gen,
+    )
 
 test_data = datasets.MNIST(
     root="data",
     train=False,
     download=True,
-    transform=transform
+    transform=transform,
 )
-
 
 train_loader = DataLoader(
     train_data,
     batch_size=batch_size,
-    shuffle=True
+    shuffle=True,
 )
 
 validation_loader = DataLoader(
     validation_data,
     batch_size=batch_size,
-    shuffle=False
+    shuffle=False,
 )
 
 test_loader = DataLoader(
     test_data,
     batch_size=batch_size,
-    shuffle=False
+    shuffle=False,
 )
-
 
 loss_fn = nn.CrossEntropyLoss()
 
+
 def train_one_epoch(model, optimizer, loader):
+    """Train the model for one epoch and return the average loss."""
     model.train()
 
     total_loss = 0.0
@@ -76,18 +73,22 @@ def train_one_epoch(model, optimizer, loader):
         y = y.to(device)
 
         logits = model(x)
-        avg_loss = loss_fn(logits, y) #average loss for the batch (reduction = "mean" by default)
+        avg_loss = loss_fn(logits, y)
 
         optimizer.zero_grad()
         avg_loss.backward()
         optimizer.step()
 
+        # Weight the batch mean by batch size to account for a potentially
+        # smaller final batch.
         total_loss += avg_loss.item() * x.size(0)
         total_samples += x.size(0)
 
     return total_loss / total_samples
 
+
 def evaluate(model, loader):
+    """Return the average loss and accuracy on a dataset."""
     model.eval()
 
     total_loss = 0.0
@@ -102,6 +103,8 @@ def evaluate(model, loader):
             logits = model(x)
             avg_loss = loss_fn(logits, y)
 
+            # Weight the batch mean by batch size to account for a potentially
+            # smaller final batch.
             total_loss += avg_loss.item() * x.size(0)
 
             predictions = logits.argmax(dim=1)
@@ -109,20 +112,26 @@ def evaluate(model, loader):
             total_correct += (predictions == y).sum().item()
             total_samples += y.size(0)
 
-    return total_loss/total_samples, total_correct/total_samples
+    return total_loss / total_samples, total_correct / total_samples
+
 
 def training_validation_run(learning_rate, momentum):
+    """Train and validate a model using the given SGD hyperparameters."""
+    # Reset the RNG so experiments use the same model initialization
+    # and mini-batch ordering.
+    torch.manual_seed(42)
+
     model = nn.Sequential(
         nn.Flatten(),
         nn.Linear(28 * 28, 128),
         nn.ReLU(),
-        nn.Linear(128, 10)
+        nn.Linear(128, 10),
     ).to(device)
 
     optimizer = torch.optim.SGD(
         model.parameters(),
         momentum=momentum,
-        lr=learning_rate
+        lr=learning_rate,
     )
 
     train_losses = []
@@ -138,14 +147,16 @@ def training_validation_run(learning_rate, momentum):
         validation_accuracies.append(validation_accuracy)
 
     history = {
-            "train_losses": train_losses,
-            "validation_losses": validation_losses,
-            "validation_accuracies": validation_accuracies
-            }
+        "train_losses": train_losses,
+        "validation_losses": validation_losses,
+        "validation_accuracies": validation_accuracies,
+        }
 
     return model, history
 
+
 def print_history(history):
+    """Print the recorded training and validation metrics for each epoch."""
     for epoch in range(n_epochs):
         print(
             f"Epoch {epoch + 1:02d} | ", end=" ")
@@ -153,7 +164,9 @@ def print_history(history):
             print(f"{metric}: {history[metric][epoch]:.4f} |", end=" ")
         print()
 
+
 def plot_metric_histories(histories, metric):
+    """Plot a metric across epochs for each hyperparameter configuration."""
     plt.figure()
 
     for (learning_rate, momentum), history in histories.items():
@@ -170,8 +183,9 @@ def plot_metric_histories(histories, metric):
     plt.ylabel(metric)
     plt.legend()
 
+
 def main():
-    lr_mom_experiments = [
+    lr_momentum_experiments = [
         (0.4, 0.0),
         (0.15, 0.5),
         (0.03, 0.9),
@@ -180,14 +194,15 @@ def main():
     histories = {}
     models = {}
 
-    for learning_rate, momentum in lr_mom_experiments:
-        models[(learning_rate, momentum)], histories[(learning_rate, momentum)] = \
-        training_validation_run(
+    for learning_rate, momentum in lr_momentum_experiments:
+        model, history = training_validation_run(
             learning_rate,
-            momentum
+            momentum,
         )
+        models[(learning_rate, momentum)] = model
+        histories[(learning_rate, momentum)] = history
 
-    for learning_rate, momentum in lr_mom_experiments:
+    for learning_rate, momentum in lr_momentum_experiments:
         print_history(histories[(learning_rate, momentum)])
 
     metrics = next(iter(histories.values())).keys()
@@ -195,9 +210,13 @@ def main():
         plot_metric_histories(histories, metric)
     plt.show()
 
+    # Hyperparameters selected based on validation performance.
+    final_learning_rate = 0.4
+    final_momentum = 0.0
 
-    final_learning_rate, final_momentum = lr_mom_experiments[0]
     final_model = models[(final_learning_rate, final_momentum)]
+
+    # Evaluate the selected model on the test set only after model selection.
     test_loss, test_accuracy = evaluate(final_model, test_loader)
 
     print(
