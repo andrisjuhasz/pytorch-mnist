@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
+from models.fully_connected import make_fully_connected
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -115,18 +116,10 @@ def evaluate(model, loader):
     return total_loss / total_samples, total_correct / total_samples
 
 
-def training_validation_run(learning_rate, momentum):
+def training_validation_run(model, learning_rate, momentum):
     """Train and validate a model using the given SGD hyperparameters."""
     # Reset the RNG so experiments use the same model initialization
     # and mini-batch ordering.
-    torch.manual_seed(42)
-
-    model = nn.Sequential(
-        nn.Flatten(),
-        nn.Linear(28 * 28, 128),
-        nn.ReLU(),
-        nn.Linear(128, 10),
-    ).to(device)
 
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -152,7 +145,7 @@ def training_validation_run(learning_rate, momentum):
         "validation_accuracies": validation_accuracies,
         }
 
-    return model, history
+    return history
 
 
 def print_history(history):
@@ -195,10 +188,13 @@ def main():
     models = {}
 
     for learning_rate, momentum in lr_momentum_experiments:
-        model, history = training_validation_run(
-            learning_rate,
-            momentum,
-        )
+        torch.manual_seed(42)
+        model = make_fully_connected().to(device)
+        history = training_validation_run(
+                model,
+                learning_rate,
+                momentum,
+                )
         models[(learning_rate, momentum)] = model
         histories[(learning_rate, momentum)] = history
 
@@ -226,4 +222,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
