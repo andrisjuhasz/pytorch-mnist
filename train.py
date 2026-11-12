@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 
 from models.fully_connected import make_fully_connected
+from models.cnn import make_cnn
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -189,7 +190,7 @@ def main():
 
     for learning_rate, momentum in lr_momentum_experiments:
         torch.manual_seed(42)
-        model = make_fully_connected().to(device)
+        model = make_cnn().to(device)
         history = training_validation_run(
                 model,
                 learning_rate,
