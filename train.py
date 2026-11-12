@@ -1,8 +1,11 @@
-import matplotlib.pyplot as plt
+from datetime import datetime
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
+import matplotlib.pyplot as plt
 
 from models.fully_connected import make_fully_connected
 from models.cnn import make_cnn
@@ -158,9 +161,11 @@ def print_history(history):
             print(f"{metric}: {history[metric][epoch]:.4f} |", end=" ")
         print()
 
-
 def plot_metric_histories(histories, metric):
-    """Plot a metric across epochs for each hyperparameter configuration."""
+    """Save a metric plot for each hyperparameter configuration."""
+    output_dir = Path("plots")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     plt.figure()
 
     for (learning_rate, momentum), history in histories.items():
@@ -177,6 +182,13 @@ def plot_metric_histories(histories, metric):
     plt.ylabel(metric)
     plt.legend()
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filepath = output_dir / f"{metric}_{timestamp}.png"
+
+    plt.savefig(filepath, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    return filepath
 
 def main():
     lr_momentum_experiments = [
@@ -205,7 +217,6 @@ def main():
     metrics = next(iter(histories.values())).keys()
     for metric in metrics:
         plot_metric_histories(histories, metric)
-    plt.show()
 
     # Hyperparameters selected based on validation performance.
     final_learning_rate = 0.4
@@ -223,5 +234,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
