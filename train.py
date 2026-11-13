@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -14,7 +15,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 train_validation_ratio = 0.9
 batch_size = 64
-n_epochs = 20
+# n_epochs = 10
 
 transform = transforms.Compose([
     transforms.ToTensor()
@@ -120,7 +121,7 @@ def evaluate(model, loader):
     return total_loss / total_samples, total_correct / total_samples
 
 
-def training_validation_run(model, learning_rate, momentum):
+def training_validation_run(model, learning_rate, momentum, n_epochs):
     """Train and validate a model using the given SGD hyperparameters."""
     # Reset the RNG so experiments use the same model initialization
     # and mini-batch ordering.
@@ -154,7 +155,7 @@ def training_validation_run(model, learning_rate, momentum):
 
 def print_history(history):
     """Print the recorded training and validation metrics for each epoch."""
-    for epoch in range(n_epochs):
+    for epoch in range(len(history["train_losses"])):
         print(
             f"Epoch {epoch + 1:02d} | ", end=" ")
         for metric in history:
@@ -191,6 +192,29 @@ def plot_metric_histories(histories, metric):
     return filepath
 
 def main():
+    parser = argparse.ArgumentParser(description="Train a model on MNIST.")
+    parser.add_argument(
+        "--model",
+        choices=["fully_connected", "cnn"],
+        default="fully_connected",
+        help="Model architecture (default: fully_connected)",
+    )
+    parser.add_argument(
+            "--epochs",
+            type=int,
+            default=10
+            )
+    args = parser.parse_args()
+    
+    if args.epochs < 1:
+        parser.error("--epochs must be at least 1")
+
+    model_factories = {
+        "fully_connected": make_fully_connected,
+        "cnn": make_cnn,
+    }
+    make_model = model_factories[args.model]
+
     lr_momentum_experiments = [
         (0.4, 0.0),
         (0.15, 0.5),
@@ -202,11 +226,12 @@ def main():
 
     for learning_rate, momentum in lr_momentum_experiments:
         torch.manual_seed(42)
-        model = make_cnn().to(device)
+        model = make_model().to(device)
         history = training_validation_run(
                 model,
                 learning_rate,
                 momentum,
+                args.epochs
                 )
         models[(learning_rate, momentum)] = model
         histories[(learning_rate, momentum)] = history
