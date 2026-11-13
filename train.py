@@ -11,63 +11,12 @@ import matplotlib.pyplot as plt
 from models.fully_connected import make_fully_connected
 from models.cnn import make_cnn
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-train_validation_ratio = 0.9
-batch_size = 64
-# n_epochs = 10
-
-transform = transforms.Compose([
-    transforms.ToTensor()
-])
-
-full_train_data = datasets.MNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=transform
-)
-
-train_size = int(train_validation_ratio * len(full_train_data))
-validation_size = len(full_train_data) - train_size
-
-random_gen = torch.Generator().manual_seed(42)
-
-train_data, validation_data = random_split(
-    full_train_data,
-    [train_size, validation_size],
-    generator=random_gen,
-    )
-
-test_data = datasets.MNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=transform,
-)
-
-train_loader = DataLoader(
-    train_data,
-    batch_size=batch_size,
-    shuffle=True,
-)
-
-validation_loader = DataLoader(
-    validation_data,
-    batch_size=batch_size,
-    shuffle=False,
-)
-
-test_loader = DataLoader(
-    test_data,
-    batch_size=batch_size,
-    shuffle=False,
-)
-
-loss_fn = nn.CrossEntropyLoss()
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+BATCH_SIZE = 64
+TRAIN_VALIDATION_RATIO = 0.9
 
 
-def train_one_epoch(model, optimizer, loader):
+def train_one_epoch(model, optimizer, loader, loss_fn):
     """Train the model for one epoch and return the average loss."""
     model.train()
 
@@ -75,8 +24,8 @@ def train_one_epoch(model, optimizer, loader):
     total_samples = 0
 
     for x, y in loader:
-        x = x.to(device)
-        y = y.to(device)
+        x = x.to(DEVICE)
+        y = y.to(DEVICE)
 
         logits = model(x)
         avg_loss = loss_fn(logits, y)
@@ -93,7 +42,7 @@ def train_one_epoch(model, optimizer, loader):
     return total_loss / total_samples
 
 
-def evaluate(model, loader):
+def evaluate(model, loader, loss_fn):
     """Return the average loss and accuracy on a dataset."""
     model.eval()
 
@@ -103,8 +52,8 @@ def evaluate(model, loader):
 
     with torch.no_grad():
         for x, y in loader:
-            x = x.to(device)
-            y = y.to(device)
+            x = x.to(DEVICE)
+            y = y.to(DEVICE)
 
             logits = model(x)
             avg_loss = loss_fn(logits, y)
@@ -121,11 +70,16 @@ def evaluate(model, loader):
     return total_loss / total_samples, total_correct / total_samples
 
 
-def training_validation_run(model, learning_rate, momentum, n_epochs):
+def training_validation_run(
+        model,
+        learning_rate,
+        momentum,
+        train_loader,
+        validation_loader,
+        loss_fn,
+        n_epochs
+        ):
     """Train and validate a model using the given SGD hyperparameters."""
-    # Reset the RNG so experiments use the same model initialization
-    # and mini-batch ordering.
-
     optimizer = torch.optim.SGD(
         model.parameters(),
         momentum=momentum,
@@ -137,8 +91,8 @@ def training_validation_run(model, learning_rate, momentum, n_epochs):
     validation_accuracies = []
 
     for epoch in range(n_epochs):
-        train_loss = train_one_epoch(model, optimizer, train_loader)
-        validation_loss, validation_accuracy = evaluate(model, validation_loader)
+        train_loss = train_one_epoch(model, optimizer, train_loader, loss_fn)
+        validation_loss, validation_accuracy = evaluate(model, validation_loader, loss_fn)
 
         train_losses.append(train_loss)
         validation_losses.append(validation_loss)
@@ -161,6 +115,7 @@ def print_history(history):
         for metric in history:
             print(f"{metric}: {history[metric][epoch]:.4f} |", end=" ")
         print()
+
 
 def plot_metric_histories(histories, metric):
     """Save a metric plot for each hyperparameter configuration."""
@@ -191,6 +146,7 @@ def plot_metric_histories(histories, metric):
 
     return filepath
 
+
 def main():
     parser = argparse.ArgumentParser(description="Train a model on MNIST.")
     parser.add_argument(
@@ -214,6 +170,55 @@ def main():
         "cnn": make_cnn,
     }
     make_model = model_factories[args.model]
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
+
+    full_train_data = datasets.MNIST(
+        root="data",
+        train=True,
+        download=True,
+        transform=transform
+    )
+
+    train_size = int(TRAIN_VALIDATION_RATIO * len(full_train_data))
+    validation_size = len(full_train_data) - train_size
+
+    random_gen = torch.Generator().manual_seed(42)
+
+    train_data, validation_data = random_split(
+        full_train_data,
+        [train_size, validation_size],
+        generator=random_gen,
+        )
+
+    test_data = datasets.MNIST(
+        root="data",
+        train=False,
+        download=True,
+        transform=transform,
+    )
+
+    train_loader = DataLoader(
+        train_data,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+    )
+
+    validation_loader = DataLoader(
+        validation_data,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+    )
+
+    test_loader = DataLoader(
+        test_data,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+    )
+
+    loss_fn = nn.CrossEntropyLoss()
+
 
     lr_momentum_experiments = [
         (0.4, 0.0),
@@ -226,11 +231,14 @@ def main():
 
     for learning_rate, momentum in lr_momentum_experiments:
         torch.manual_seed(42)
-        model = make_model().to(device)
+        model = make_model().to(DEVICE)
         history = training_validation_run(
                 model,
                 learning_rate,
                 momentum,
+                train_loader,
+                validation_loader,
+                loss_fn,
                 args.epochs
                 )
         models[(learning_rate, momentum)] = model
@@ -250,12 +258,13 @@ def main():
     final_model = models[(final_learning_rate, final_momentum)]
 
     # Evaluate the selected model on the test set only after model selection.
-    test_loss, test_accuracy = evaluate(final_model, test_loader)
+    test_loss, test_accuracy = evaluate(final_model, test_loader, loss_fn)
 
     print(
         f"Test loss: {test_loss:.4f} | "
         f"Test accuracy: {test_accuracy * 100:.2f}%"
     )
+
 
 if __name__ == "__main__":
     main()
